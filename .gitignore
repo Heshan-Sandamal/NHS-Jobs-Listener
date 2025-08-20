@@ -1,5 +1,4 @@
 .env
-other/consultants.py
 *.log
 *.pkl
 other/*
