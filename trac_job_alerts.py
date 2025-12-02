@@ -133,7 +133,7 @@ def send_email(new_jobs):
     html = """
     <html>
     <body>
-        <h2>🔔 New HealthJobsUK Listings</h2>
+        <h2>🔔 New HealthJobsUK Listings: Trac Jobs</h2>
         <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; font-family: Arial; font-size: 14px;">
             <thead>
                 <tr style="background-color: #f2f2f2;">
