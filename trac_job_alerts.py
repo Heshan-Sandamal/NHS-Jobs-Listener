@@ -26,8 +26,7 @@ EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 SMTP_SERVER = os.environ["SMTP_SERVER"]
 SMTP_PORT = int(os.environ["SMTP_PORT"])
 
-KEYWORDS = ['fellow', 'doctor', 'fy1', 'fy2', 'Foundation Year', 'Surgical', 'Surgery', 'Foundation', "FF1", "FF2",
-            "FF3", "SHO"]
+KEYWORDS = ['fellow', 'doctor', 'Surgical', 'Surgery', "Trauma", "SHO", "Orthopaedic", "ST3", "ST4", "ST5", "ST6", "ST7", "ST8", "Registrar"]
 pattern = re.compile(r'(' + '|'.join(KEYWORDS) + r')', re.IGNORECASE)
 
 
@@ -188,7 +187,7 @@ def main():
     load_dotenv()
 
     logging.info("Script started. at" + str(datetime.now()))
-    URLS = [os.environ["SCR_URL_1"], os.environ["SCR_URL_2"], os.environ["SCR_URL_3"], os.environ["SCR_URL_4"]]
+    URLS = [os.environ["SCR_URL_1"], os.environ["SCR_URL_2"], os.environ["SCR_URL_3"], os.environ["SCR_URL_4"], os.environ["SCR_URL_5"], os.environ["SCR_URL_6"], os.environ["SCR_URL_7"], os.environ["SCR_URL_8"]]
 
     all_jobs_for_email = {}
     for url in URLS:
