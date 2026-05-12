@@ -8,32 +8,66 @@ import smtplib
 from email.mime.text import MIMEText
 from datetime import datetime
 import logging
+import time
 
 load_dotenv()
 
+# --- Logging ---
 logging.basicConfig(
-    filename='C:\\Users\\Lenovo\\PycharmProjects\\trac-jobs-listener\\healthjobs_scraper.log',
+    filename='healthjobs_scraper.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-# --- Configuration ---
-BASE_URL = os.environ["BASE_URL"]
 
-SEEN_JOBS_FILE = "C:\\Users\\Lenovo\\PycharmProjects\\trac-jobs-listener\\seen_jobs.pkl"
+# --- Config ---
+BASE_URL = os.environ["BASE_URL"]
+SEEN_JOBS_FILE = "seen_jobs.pkl"
+
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
 EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
 EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 SMTP_SERVER = os.environ["SMTP_SERVER"]
 SMTP_PORT = int(os.environ["SMTP_PORT"])
 
-KEYWORDS = ['fellow', 'doctor', 'Surgical', 'Surgery', "Trauma", "SHO", "Orthopaedic", "ST3", "ST4", "ST5", "ST6", "ST7", "ST8", "Registrar"]
+KEYWORDS = [
+    'fellow', 'doctor', 'Surgical', 'Surgery', "Trauma",
+    "SHO", "Orthopaedic", "ST3", "ST4", "ST5", "ST6",
+    "ST7", "ST8", "Registrar"
+]
+
 pattern = re.compile(r'(' + '|'.join(KEYWORDS) + r')', re.IGNORECASE)
 
+# --- Session Setup ---
+session = requests.Session()
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5) AppleWebKit/537.36 Chrome/147.0.0.0 Mobile Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.healthjobsuk.com/",
+    "Connection": "keep-alive"
+}
+
+
+# --- Safe Request ---
+def safe_get(url, retries=3):
+    for attempt in range(retries):
+        try:
+            response = session.get(url, headers=HEADERS, timeout=10)
+            if response.status_code == 200:
+                return response
+            logging.warning(f"Retry {attempt+1}: {url} returned {response.status_code}")
+        except Exception as e:
+            logging.warning(f"Retry {attempt+1} failed: {e}")
+
+        time.sleep(2)
+
+    raise Exception(f"Failed to fetch {url}")
+
+
+# --- Pagination ---
 def get_all_page_urls(start_url):
-    """Fetch all pagination URLs from the first page."""
-    response = requests.get(start_url)
-    response.raise_for_status()
+    response = safe_get(start_url)
     soup = BeautifulSoup(response.text, 'lxml')
 
     pagination_links = soup.select('nav.recordset-pager ul.pagination a.page-link[href]')
@@ -45,15 +79,14 @@ def get_all_page_urls(start_url):
             full_url = requests.compat.urljoin(BASE_URL, href)
             page_urls.add(full_url)
 
-    page_urls.add(start_url)  # Ensure first page included
+    page_urls.add(start_url)
     return sorted(page_urls)
 
 
+# --- Extract Jobs ---
 def extract_jobs_from_page(url):
-    """Extract filtered jobs from a single page."""
-    print(f"Scraping: {url}")
-    response = requests.get(url)
-    response.raise_for_status()
+    logging.info(f"Scraping: {url}")
+    response = safe_get(url)
     soup = BeautifulSoup(response.text, 'lxml')
 
     job_list = soup.select_one('#hj-job-list > ol')
@@ -61,6 +94,7 @@ def extract_jobs_from_page(url):
         return {}
 
     jobs = {}
+
     for li in job_list.find_all('li'):
         a = li.find('a', href=True)
         if not a:
@@ -69,53 +103,53 @@ def extract_jobs_from_page(url):
         try:
             title_div = a.find_all('div')[0].find_all('div')[0]
             title = title_div.get_text(strip=True)
-        except (IndexError, AttributeError):
+        except:
             continue
 
-        if pattern.search(title):
-            link = requests.compat.urljoin(BASE_URL, a['href'])
-            jobs[link] = title
+        if not pattern.search(title):
+            continue
 
-            # Job details block
-            details_div = li.select_one('div.hj-job-details')
-            if not details_div:
-                continue
+        link = requests.compat.urljoin(BASE_URL, a['href'])
 
-            employer = details_div.select_one('.hj-employername')
-            location = details_div.select_one('.hj-locationtown')
-            speciality = details_div.select_one('.hj-primaryspeciality')
+        details_div = li.select_one('div.hj-job-details')
 
-            # Extract text with fallback
-            employer_text = employer.get_text(strip=True) if employer else "N/A"
-            location_text = location.get_text(strip=True) if location else "N/A"
-            speciality_text = speciality.get_text(strip=True).replace('Speciality:',
-                                                                      '').strip() if speciality else "N/A"
-            link = requests.compat.urljoin(BASE_URL, a['href'])
+        employer = details_div.select_one('.hj-employername') if details_div else None
+        location = details_div.select_one('.hj-locationtown') if details_div else None
+        speciality = details_div.select_one('.hj-primaryspeciality') if details_div else None
 
-            full_description = (
-                f"{title}\n"
-                f"Employer: {employer_text}\n"
-                f"Location: {location_text}\n"
-                f"Speciality: {speciality_text}\n"
-            )
+        employer_text = employer.get_text(strip=True) if employer else "N/A"
+        location_text = location.get_text(strip=True) if location else "N/A"
+        speciality_text = (
+            speciality.get_text(strip=True).replace('Speciality:', '').strip()
+            if speciality else "N/A"
+        )
 
-            jobs[link] = full_description
+        full_description = (
+            f"{title}\n"
+            f"Employer: {employer_text}\n"
+            f"Location: {location_text}\n"
+            f"Speciality: {speciality_text}\n"
+        )
+
+        jobs[link] = full_description
 
     return jobs
 
 
-def fetch_all_filtered_jobs(START_URL):
-    """Get jobs from all paginated pages with filtering."""
+# --- Fetch All ---
+def fetch_all_filtered_jobs(start_url):
     all_jobs = {}
-    page_urls = get_all_page_urls(START_URL)
+    page_urls = get_all_page_urls(start_url)
 
     for url in page_urls:
+        time.sleep(1)  # avoid blocking
         page_jobs = extract_jobs_from_page(url)
         all_jobs.update(page_jobs)
 
     return all_jobs
 
 
+# --- Persistence ---
 def load_seen_jobs():
     if os.path.exists(SEEN_JOBS_FILE):
         with open(SEEN_JOBS_FILE, 'rb') as f:
@@ -128,52 +162,30 @@ def save_seen_jobs(job_links):
         pickle.dump(set(job_links), f)
 
 
+# --- Email ---
 def send_email(new_jobs):
-    html = """
-    <html>
-    <body>
-        <h2>🔔 New HealthJobsUK Listings: Trac Jobs</h2>
-        <table border="1" cellspacing="0" cellpadding="5" style="border-collapse: collapse; font-family: Arial; font-size: 14px;">
-            <thead>
-                <tr style="background-color: #f2f2f2;">
-                    <th>Title</th>
-                    <th>Employer</th>
-                    <th>Location</th>
-                    <th>Speciality</th>
-                    <th>Link</th>
-                    <th>Time</th>
-                </tr>
-            </thead>
-            <tbody>
+    html = """<html><body>
+    <h2>🔔 New HealthJobsUK Listings</h2>
+    <table border="1" cellpadding="5" cellspacing="0">
     """
 
-    for link, description in new_jobs.items():
-        lines = description.strip().split("\n")
-        title = lines[0]
-        employer = lines[1].replace("Employer: ", "")
-        location = lines[2].replace("Location: ", "")
-        speciality = lines[3].replace("Speciality: ", "")
+    for link, desc in new_jobs.items():
+        lines = desc.split("\n")
 
         html += f"""
-            <tr>
-                <td>{title}</td>
-                <td>{employer}</td>
-                <td>{location}</td>
-                <td>{speciality}</td>
-                <td><a href="{link}" target="_blank">View Job</a></td>
-                <td>{str(datetime.now())}</td>
-            </tr>
+        <tr>
+            <td>{lines[0]}</td>
+            <td>{lines[1].replace("Employer: ", "")}</td>
+            <td>{lines[2].replace("Location: ", "")}</td>
+            <td>{lines[3].replace("Speciality: ", "")}</td>
+            <td><a href="{link}">View</a></td>
+        </tr>
         """
 
-    html += """
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """
+    html += "</table></body></html>"
 
     msg = MIMEText(html, 'html')
-    msg['Subject'] = f"New HealthJobsUK Posts Alert - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    msg['Subject'] = f"New Jobs - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     msg['From'] = EMAIL_SENDER
     msg['To'] = EMAIL_RECEIVER
 
@@ -183,28 +195,45 @@ def send_email(new_jobs):
         server.send_message(msg)
 
 
+# --- Main ---
 def main():
-    load_dotenv()
+    logging.info("Script started")
 
-    logging.info("Script started. at" + str(datetime.now()))
-    URLS = [os.environ["SCR_URL_1"], os.environ["SCR_URL_2"], os.environ["SCR_URL_3"], os.environ["SCR_URL_4"], os.environ["SCR_URL_5"], os.environ["SCR_URL_6"], os.environ["SCR_URL_7"], os.environ["SCR_URL_8"]]
+    # 🔥 Warm-up request (IMPORTANT)
+    session.get(BASE_URL, headers=HEADERS)
 
-    all_jobs_for_email = {}
+    URLS = [
+        os.environ["SCR_URL_1"],
+        os.environ["SCR_URL_2"],
+        os.environ["SCR_URL_3"],
+        os.environ["SCR_URL_4"],
+        os.environ["SCR_URL_5"],
+        os.environ["SCR_URL_6"],
+        os.environ["SCR_URL_7"],
+        os.environ["SCR_URL_8"]
+    ]
+
+    seen_jobs = load_seen_jobs()
+    all_new_jobs = {}
+
     for url in URLS:
-        current_jobs = fetch_all_filtered_jobs(url)
-        seen_jobs = load_seen_jobs()
+        try:
+            current_jobs = fetch_all_filtered_jobs(url)
+            new_jobs = {k: v for k, v in current_jobs.items() if k not in seen_jobs}
 
-        new_jobs = {lnk: title for lnk, title in current_jobs.items() if lnk not in seen_jobs}
+            if new_jobs:
+                all_new_jobs.update(new_jobs)
+                seen_jobs.update(new_jobs.keys())
 
-        if new_jobs:
-            all_jobs_for_email = all_jobs_for_email | new_jobs
-            save_seen_jobs(seen_jobs | current_jobs.keys())
+        except Exception as e:
+            logging.error(f"Failed: {url} - {e}")
 
-    if (len(all_jobs_for_email) > 0):
-        logging.info(f"Found {len(all_jobs_for_email)} new job(s). Sending email...")
-        send_email(all_jobs_for_email)
+    if all_new_jobs:
+        send_email(all_new_jobs)
+        save_seen_jobs(seen_jobs)
+        logging.info(f"Sent {len(all_new_jobs)} new jobs")
     else:
-        logging.info("No new jobs found.")
+        logging.info("No new jobs found")
 
 
 if __name__ == "__main__":
