@@ -144,8 +144,15 @@ def get_all_pages(page):
 
 # --- Scrape ---
 def scrape_jobs(playwright, start_urls):
-    browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context()
+    browser = playwright.chromium.launch(
+        channel="chrome",
+        headless=True,
+    )
+    context = playwright.chromium.launch_persistent_context(
+        user_data_dir="./profile",
+        channel="chrome",
+        headless=True,
+    )
     page = context.new_page()
 
     all_jobs = {}
@@ -159,16 +166,21 @@ def scrape_jobs(playwright, start_urls):
     for start_url in start_urls:
         logging.info(f"Opening {start_url}")
 
-        page.goto(start_url, timeout=60000)
-        time.sleep(2)
+        page.wait_for_timeout(3000)
 
-        accept_cookies(page)  # 🔥 ensure popup handled per page
+        accept_cookies(page)
 
         # safer wait than ID selector
         try:
-            page.wait_for_selector("#hj-job-list", timeout=20000)
-            page.wait_for_selector("li.hj-job", timeout=20000)
-        except:
+            print("URL:", page.url)
+            print("Title:", page.title())
+            print("Job list count:", page.locator("#hj-job-list").count())
+
+            page.screenshot(path="debug.png", full_page=True)
+
+            page.locator("#hj-job-list").wait_for(state="attached", timeout=20000)
+        except Exception as e:
+            logging.error(e)
             logging.warning(f"Job list not found: {start_url}")
             continue
 
@@ -178,8 +190,8 @@ def scrape_jobs(playwright, start_urls):
         for url in page_urls:
             logging.info(f"Scraping page: {url}")
 
-            page.goto(url, timeout=60000)
-            time.sleep(2)
+            page.goto(url, timeout=60000, wait_until="domcontentloaded",)
+            # time.sleep(2)
 
             accept_cookies(page)
 
