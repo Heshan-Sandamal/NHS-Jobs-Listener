@@ -192,14 +192,17 @@ def main():
 
     all_jobs_for_email = {}
     for url in URLS:
-        current_jobs = fetch_all_filtered_jobs(url)
-        seen_jobs = load_seen_jobs()
+        try:
+            current_jobs = fetch_all_filtered_jobs(url)
+            seen_jobs = load_seen_jobs()
 
-        new_jobs = {lnk: title for lnk, title in current_jobs.items() if lnk not in seen_jobs}
+            new_jobs = {lnk: title for lnk, title in current_jobs.items() if lnk not in seen_jobs}
 
-        if new_jobs:
-            all_jobs_for_email = all_jobs_for_email | new_jobs
-            save_seen_jobs(seen_jobs | current_jobs.keys())
+            if new_jobs:
+                all_jobs_for_email = all_jobs_for_email | new_jobs
+                save_seen_jobs(seen_jobs | current_jobs.keys())
+        except Exception as e:
+            logging.error(e)
 
     if (len(all_jobs_for_email) > 0):
         logging.info(f"Found {len(all_jobs_for_email)} new job(s). Sending email...")

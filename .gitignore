@@ -1,6 +1,7 @@
 .env-st3+
 *.log
-*.pkl
 other/*
 .idea
-.env
+.env_st3
+chrome_profile/*
+profile/*
