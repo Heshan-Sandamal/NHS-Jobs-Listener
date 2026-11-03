@@ -13,7 +13,7 @@ load_dotenv()
 
 # --- Logging ---
 logging.basicConfig(
-    filename='healthjobs_scraper.log',
+    filename='C:\\Users\\Lenovo\\PycharmProjects\\trac-jobs-listener\\healthjobs_scraper.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
@@ -28,11 +28,8 @@ EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 SMTP_SERVER = os.environ["SMTP_SERVER"]
 SMTP_PORT = int(os.environ["SMTP_PORT"])
 
-KEYWORDS = [
-    'fellow', 'doctor', 'Surgical', 'Surgery', "Trauma",
-    "SHO", "Orthopaedic", "ST3", "ST4", "ST5",
-    "ST6", "ST7", "ST8", "Registrar"
-]
+KEYWORDS = ['fellow', 'doctor', 'fy1', 'fy2', 'Foundation Year', 'Surgical', 'Surgery', 'Foundation', "FF1", "FF2",
+            "FF3", "SHO"]
 
 pattern = re.compile(r'(' + '|'.join(KEYWORDS) + r')', re.IGNORECASE)
 
@@ -146,24 +143,26 @@ def get_all_pages(page):
 def scrape_jobs(playwright, start_urls):
     browser = playwright.chromium.launch(
         channel="chrome",
-        headless=True,
+        headless=False,
     )
     context = playwright.chromium.launch_persistent_context(
         user_data_dir="./profile",
         channel="chrome",
-        headless=True,
+        headless=False,
     )
     page = context.new_page()
 
     all_jobs = {}
 
-    # warm up
-    page.goto(BASE_URL, timeout=60000)
-    time.sleep(2)
 
-    accept_cookies(page)   # 🔥 FIX ADDED HERE
 
     for start_url in start_urls:
+        # warm up
+        page.goto(start_url, timeout=60000)
+        time.sleep(2)
+
+        accept_cookies(page)  # 🔥 FIX ADDED HERE
+
         logging.info(f"Opening {start_url}")
 
         page.wait_for_timeout(3000)
@@ -215,7 +214,10 @@ def scrape_jobs(playwright, start_urls):
 
 # --- Email ---
 def send_email(new_jobs):
-    html = "<html><body><h2>🔔 New Jobs</h2><table border='1'>"
+    html = """<html><body>
+    <h2>🔔 New HealthJobsUK Listings</h2>
+    <table border="1" cellpadding="5" cellspacing="0">
+    """
 
     for link, desc in new_jobs.items():
         lines = desc.split("\n")
@@ -233,7 +235,7 @@ def send_email(new_jobs):
     html += "</table></body></html>"
 
     msg = MIMEText(html, 'html')
-    msg['Subject'] = f"New Jobs - {datetime.now()}"
+    msg['Subject'] = f"New Jobs - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     msg['From'] = EMAIL_SENDER
     msg['To'] = EMAIL_RECEIVER
 
@@ -251,23 +253,29 @@ def main():
         os.environ["SCR_URL_1"],
         os.environ["SCR_URL_2"],
         os.environ["SCR_URL_3"],
-        os.environ["SCR_URL_4"],
-        os.environ["SCR_URL_5"],
-        os.environ["SCR_URL_6"],
-        os.environ["SCR_URL_7"],
-        os.environ["SCR_URL_8"]
+        os.environ["SCR_URL_4"]
     ]
 
     seen_jobs = load_seen_jobs()
+    all_new_jobs = {}
 
     with sync_playwright() as p:
-        all_jobs = scrape_jobs(p, URLS)
+        try:
+            all_jobs = scrape_jobs(p, URLS)
+            new_jobs = {k.split('?')[0]: v for k, v in all_jobs.items() if k.split('?')[0] not in seen_jobs}
 
-    new_jobs = {k: v for k, v in all_jobs.items() if k not in seen_jobs}
+            if new_jobs:
+                all_new_jobs.update(new_jobs)
+                seen_jobs.update(new_jobs.keys())
 
-    if new_jobs:
-        send_email(new_jobs)
-        save_seen_jobs(seen_jobs.union(new_jobs.keys()))
+        except Exception as e:
+            logging.error(f"Failed:- {e}")
+
+    # new_jobs = {k: v for k, v in all_jobs.items() if k not in seen_jobs}
+
+    if all_new_jobs:
+        send_email(all_new_jobs)
+        save_seen_jobs(seen_jobs)
         logging.info(f"Sent {len(new_jobs)} jobs")
     else:
         logging.info("No new jobs found")

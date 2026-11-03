@@ -29,12 +29,8 @@ EMAIL_RECEIVER = os.environ["EMAIL_RECEIVER"]
 SMTP_SERVER = os.environ["SMTP_SERVER"]
 SMTP_PORT = int(os.environ["SMTP_PORT"])
 
-KEYWORDS = [
-    'fellow', 'doctor', 'Surgical', 'Surgery', "Trauma",
-    "SHO", "Orthopaedic", "ST3", "ST4", "ST5", "ST6",
-    "ST7", "ST8", "Registrar"
-]
-
+KEYWORDS = ['fellow', 'doctor', 'fy1', 'fy2', 'Foundation Year', 'Surgical', 'Surgery', 'Foundation', "FF1", "FF2",
+            "FF3", "SHO"]
 pattern = re.compile(r'(' + '|'.join(KEYWORDS) + r')', re.IGNORECASE)
 
 # --- Session Setup ---
